@@ -20,6 +20,12 @@ def mse(outputs, labels, alpha=2):
     loss_std  = nn.functional.mse_loss(pred_std,  true_std)
     return loss_mean + alpha * loss_std
 
+def gaussian_nll_loss(preds, labels, eps=1e-6):
+    mu, sigma = preds[:, 0], preds[:, 1].clamp(min=eps)
+    y         = labels[:, 0]
+    # NLL = 0.5*log(2πσ²) + (y - μ)² / (2σ²)
+    loss = 0.5 * torch.log(2 * torch.pi * sigma**2) + (y - mu)**2 / (2 * sigma**2)
+    return loss.mean()
 
 class CustomTrainer:
     def __init__(
@@ -128,6 +134,6 @@ class CustomTrainer:
 
         preds = torch.cat(all_preds)
         labels = torch.cat(all_labels)
-        mse = nn.MSELoss()(preds, labels)
+        mse = self.loss_fn_mse(outputs, labels)
         return mse, preds, labels
 

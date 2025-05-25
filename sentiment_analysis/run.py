@@ -22,9 +22,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 data_path = os.path.join(current_dir,"dataset/imdb_action_movies_full.json")
 output_dir = os.path.join(current_dir,"saved_checkpoints")
 log_dir = os.path.join(current_dir,f"runs_log/exp_full_data_{lr}_{batch_size}") 
-if not training_resume:
-    shutil.rmtree(log_dir) 
-    log_dir.mkdir(parents=True, exist_ok=True)
+# if not training_resume:
+#     shutil.rmtree(log_dir) 
+#     log_dir.mkdir(parents=True, exist_ok=True)
 dataset = MovieReviewDataset(data_path)
 processed_data = dataset.samples
 
