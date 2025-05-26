@@ -12,7 +12,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from timer import Stagetimer
 from collections import defaultdict
-
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 DESKTOP_HEADERS = {
 'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -37,12 +38,9 @@ def selenium_get_full_page(url, if_all=True, wait_selector='a[href^="/title/"]',
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-features=VizDisplayCompositor") # avoid rendering errors
     options.add_argument(f"user-agent={DESKTOP_HEADERS['User-Agent']}") # camouflage as normal desktop browser
-
     service = Service("D:/graduate_first/NLP_movie/chromedriver-win64/chromedriver.exe")
     driver = webdriver.Chrome(service=service, options=options)
-
     driver.get(url)
-
     try:
         WebDriverWait(driver, wait_time).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, wait_selector))
@@ -177,7 +175,7 @@ def fetch_movie_details(movie_url):
         # storyline = soup.find("section",{"data-testid":"Storyline"}).find("div",class_="ipc-html-content-inner-div").get_text(strip=True)
         directors = [tag.get_text(strip=True) for tag in soup.find_all('a', href=re.compile(r'tt_ov_dr'))[:1]]
         stars = [tag.get_text(strip=True) for tag in soup.find_all('a', href=re.compile(r'tt_ov_st'))[1:4]]
-
+        
         return {"meta_score":meta_score,
                 "meta_rate":meta_rate,
                 "runtime": runtime,
@@ -218,29 +216,31 @@ def fetch_reviews_selenium(movie_id, max_clicks=1, max_reviews=-1):
                        'helpful number':soup.find_all('span', class_='ipc-voting__label__count--up'), # helpful number
                        'nohelpful number':soup.find_all('span', class_='ipc-voting__label__count--down')}
         for counts in range(len(all_review_frame)):
-            rating_tag = all_review_frame[counts].find("span", class_="ipc-rating-star--rating")
+            rating_tag = all_review_frame[counts].find("span", class_="ipc-rating-star--rating") if all_review_frame[counts] else None
             if not rating_tag:
                 continue
-            rating_value = rating_tag.get_text(strip=True) if rating_tag else ""
-            user_name = temp_record['username'][counts].get_text(strip=True)
-            review_title = temp_record['review_title'][counts].get_text(strip=True)
-            review_content = temp_record['review_content'][counts].get_text(strip=True)
-            full_review_url = "https://www.imdb.com" + temp_record['review_title'][counts]["href"]
+            rating_value = rating_tag.get_text(strip=True) if rating_tag else "N/A"
+            user_name = temp_record['username'][counts].get_text(strip=True) if temp_record['username'][counts] else "N/A"
+            review_title = temp_record['review_title'][counts].get_text(strip=True) if temp_record['review_title'][counts] else "N/A"
+            review_content = temp_record['review_content'][counts].get_text(strip=True) if temp_record['review_content'][counts] else "N/A"
+            full_review_url = "https://www.imdb.com" + temp_record['review_title'][counts]["href"] if temp_record['review_title'][counts] else "N/A"
 
-            date = temp_record['date'][counts].get_text(strip=True)
-            date = str(datetime.strptime(date, '%b %d, %Y')).split(' ')[0]
+            date = temp_record['date'][counts].get_text(strip=True) if temp_record['date'][counts] else None
+            date = str(datetime.strptime(date, '%b %d, %Y')).split(' ')[0] if date else 'N/A'
+            helpful = temp_record['helpful number'][counts].get_text(strip=True) if temp_record['helpful number'][counts] else "N/A"
+            nohelpful = temp_record['nohelpful number'][counts].get_text(strip=True) if temp_record['nohelpful number'][counts] else "N/A"
             reviews_date[date].append({
                 "user": user_name,
                 "title": review_title,
                 "review_url": full_review_url,
                 "rating": rating_value,
-                "helpful": temp_record['helpful number'][counts].get_text(strip=True),
-                "nohelpful": temp_record['nohelpful number'][counts].get_text(strip=True),
+                "helpful": helpful,
+                "nohelpful": nohelpful,
                 "content": review_content
             })
         review_date_sort = dict(sorted(reviews_date.items()))
-        print(counts)
         return review_date_sort, len(all_review_frame)
+    
     else:  
         html = selenium_get_full_page(url, if_all=True, wait_selector="[data-testid='tturv-pagination']", button_selector="span.chained-see-more-button > button.ipc-see-more__button", max_clicks=max_clicks, multibutton=False)
         soup = BeautifulSoup(html, "html.parser")
@@ -287,7 +287,7 @@ def fetch_reviews_selenium(movie_id, max_clicks=1, max_reviews=-1):
                 print("Not find review-container，skip...")
                 continue
             
-            user_name = user_tag.get_text(strip=True)
+            user_name = user_tag.get_text(strip=True) 
 
             title_tag = review_section.find(class_="ipc-title__text")
             review_title = title_tag.get_text(strip=True) if title_tag else ""
@@ -322,11 +322,24 @@ def deduplicate_reviews(reviews):
             seen_urls.add(r["review_url"])
     return deduped
 
+def process_movie(movie):
+    print(f"process film: {movie['title']} (ID: {movie['movie_id']})")
+    details = fetch_movie_details(movie['movie_url'])
+    reviews_data, review_count = fetch_reviews_selenium(movie['movie_id'])
+    if review_count < 15:
+        print(f"skip film {movie['title']}，lack of reviews:{review_count}")
+        return None
+    # reviews_data = deduplicate_reviews(reviews_data)
+    movie.update(details)
+    movie['reviews'] = reviews_data
+    return movie
+        
+
 if __name__ == '__main__':
     timer = Stagetimer()
     # Step 1: Get full HTML (click multiple times to load more)
     url_IMDb = "https://www.imdb.com/search/title/?release_date=2025-01-01,2025-05-12&genres=action&title_type=feature"
-    html = selenium_get_full_page(url_IMDb, if_all=False, wait_selector='a[href^="/title/"]',max_clicks=1, multibutton=False)
+    html = selenium_get_full_page(url_IMDb, if_all=False, wait_selector='a[href^="/title/"]',max_clicks=3, multibutton=False)
     timer.mark("Get full movie HTML")
     # Step 2: Parsing out the movie list from IMDb
     movies = parse_movies_from_soup(html)
@@ -334,26 +347,20 @@ if __name__ == '__main__':
     
     results = []
     num = 0
-    for movie in movies:
-        if '8' not in movie['title']:
-            continue
-        print(f"process film: {movie['title']} (ID: {movie['movie_id']})")
-        details = fetch_movie_details(movie['movie_url'])
-        reviews_data, review_count = fetch_reviews_selenium(movie['movie_id'])
-        if review_count < 15:
-            print(f"skip film {movie['title']}，lack of reviews:{review_count}")
-            continue
-        # reviews_data = deduplicate_reviews(reviews_data)
-        movie.update(details)
-        movie['reviews'] = reviews_data
-        results.append(movie)
-        time.sleep(3)
-        timer.mark(f"Fetch details for {movie['title']}")
-        num+=1
-        if num == 3:
-            break
+    with ThreadPoolExecutor(max_workers=3) as exe:
+        future_to_movie = {exe.submit(process_movie, movie): movie for movie in movies}
+        for fut in as_completed(future_to_movie):
+            movie = future_to_movie[fut]
+            try:
+                res = fut.result()
+                if res:
+                    results.append(res)
+            except Exception as e:
+                print(f"Error processing {movie['title']}: {e}")
+            timer.mark(f"Fetch details for {movie['title']}")
+
     timer.report()
-    
+    results.sort(key=lambda x: x['title'].split('.')[0])
     with open("./IMDB_Movie_Review_Multifunction_Engine/crawler/imdb_action_movies_full_all_review.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     print("✅ Data capture complete")
