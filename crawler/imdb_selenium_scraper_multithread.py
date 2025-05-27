@@ -143,6 +143,9 @@ def fetch_movie_details(movie_url):
         # runtime
         runtime_tag = soup.find('meta', property="og:description")
         runtime = runtime_tag.get("content", "N/A") if runtime_tag else "N/A"
+        # genre
+        geren_tag =  soup.find_all("a", class_="ipc-chip ipc-chip--on-baseAlt")
+        geren = [tag.get_text(strip=True) for tag in geren_tag]
         # details-release-date
         detailed_section = soup.find('section', {"data-testid":"Details"})
         details_div_tag = detailed_section.find("div", {"data-testid": "title-details-section"}) if detailed_section else None
@@ -154,7 +157,7 @@ def fetch_movie_details(movie_url):
         boxoffice_div = box_office_section.find("div", {"data-testid": "title-boxoffice-section"}) if box_office_section else None
         ## budget
         budget_tag = boxoffice_div.find("li",{"data-testid": "title-boxoffice-budget"}) if boxoffice_div else None
-        budget_tag_  = budget_tag.find("span",).find("span", class_ ="ipc-metadata-list-item__list-content-item ipc-btn--not-interactable") if budget_tag else None
+        budget_tag_  = budget_tag.find("span", class_ ="ipc-metadata-list-item__list-content-item ipc-btn--not-interactable") if budget_tag else None
         budget = budget_tag_.get_text(strip=True) if budget_tag_ else None
         budget = re.sub(r"[^\d]","", budget) if budget else "N/A"
         ## gross_NorthAmerica
@@ -171,12 +174,14 @@ def fetch_movie_details(movie_url):
         poster_tag = soup.find("a", href=re.compile(r'mediaviewer.*tt_ov_i'))
         poster_url =  "https://www.imdb.com" + soup.find_all("a", href=re.compile(r'tt_ov_i'))[0].get("href", "").split("?")[0] if poster_tag else "N/A"
         # description
-        description = soup.find('p',{"data-testid":"plot"}).find("span",{"data-testid":"plot-xs_to_m"}).get_text(strip=True)
+        description_tag = soup.find('p',{"data-testid":"plot"})
+        description = description_tag.find("span",{"data-testid":"plot-xs_to_m"}).get_text(strip=True) if description_tag else "N/A"
         # storyline = soup.find("section",{"data-testid":"Storyline"}).find("div",class_="ipc-html-content-inner-div").get_text(strip=True)
         directors = [tag.get_text(strip=True) for tag in soup.find_all('a', href=re.compile(r'tt_ov_dr'))[:1]]
         stars = [tag.get_text(strip=True) for tag in soup.find_all('a', href=re.compile(r'tt_ov_st'))[1:4]]
         
-        return {"meta_score":meta_score,
+        return {"geren":geren,
+                "meta_score":meta_score,
                 "meta_rate":meta_rate,
                 "runtime": runtime,
                 "directors": directors, 
@@ -192,7 +197,7 @@ def fetch_movie_details(movie_url):
                 }
     except Exception as e:
         print(f"Failed to get details: {e}")
-        return {"meta_score":"N/A","meta_rate":'N/A',"runtime": "N/A", "directors": [], "stars": [], "estimated budget": "N/A",
+        return {"geren":"N/A","meta_score":"N/A","meta_rate":'N/A',"runtime": "N/A", "directors": [], "stars": [], "estimated budget": "N/A",
                 "Gross North America": "N/A", "Opening weekend North America": "N/A",
                 "Opening weekend date North America": "N/A", "release date": "N/A","description": "N/A",# "poster":"N/A","storyline": "N/A"
                 "poster_url":"N/A"}
@@ -338,8 +343,8 @@ def process_movie(movie):
 if __name__ == '__main__':
     timer = Stagetimer()
     # Step 1: Get full HTML (click multiple times to load more)
-    url_IMDb = "https://www.imdb.com/search/title/?release_date=2025-01-01,2025-05-12&genres=action&title_type=feature"
-    html = selenium_get_full_page(url_IMDb, if_all=False, wait_selector='a[href^="/title/"]',max_clicks=3, multibutton=False)
+    url_IMDb = 'https://www.imdb.com/search/title/?title_type=feature&release_date=2025-01-01,2025-05-20' #"https://www.imdb.com/search/title/?release_date=2025-01-01,2025-05-12&genres=action&title_type=feature"
+    html = selenium_get_full_page(url_IMDb, if_all=False, wait_selector='a[href^="/title/"]',max_clicks=7, multibutton=False)
     timer.mark("Get full movie HTML")
     # Step 2: Parsing out the movie list from IMDb
     movies = parse_movies_from_soup(html)
@@ -361,7 +366,7 @@ if __name__ == '__main__':
 
     timer.report()
     results.sort(key=lambda x: x['title'].split('.')[0])
-    with open("./IMDB_Movie_Review_Multifunction_Engine/crawler/imdb_action_movies_full_all_review.json", "w", encoding="utf-8") as f:
+    with open("./IMDB_Movie_Review_Multifunction_Engine/crawler/imdb_action_movies_full_all_review_ALL_genre.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     print("✅ Data capture complete")
 

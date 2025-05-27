@@ -156,7 +156,7 @@ def fetch_movie_details(movie_url):
         boxoffice_div = box_office_section.find("div", {"data-testid": "title-boxoffice-section"}) if box_office_section else None
         ## budget
         budget_tag = boxoffice_div.find("li",{"data-testid": "title-boxoffice-budget"}) if boxoffice_div else None
-        budget_tag_  = budget_tag.find("span",).find("span", class_ ="ipc-metadata-list-item__list-content-item ipc-btn--not-interactable") if budget_tag else None
+        budget_tag_  = budget_tag.find("span", class_ ="ipc-metadata-list-item__list-content-item ipc-btn--not-interactable") if budget_tag else None
         budget = budget_tag_.get_text(strip=True) if budget_tag_ else None
         budget = re.sub(r"[^\d]","", budget) if budget else "N/A"
         ## gross_NorthAmerica
